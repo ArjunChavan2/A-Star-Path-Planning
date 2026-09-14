@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>A* Debug Visualizer — Project 1</title>
+<style>
+  :root {
+    --free: #f5f5f0;
+    --obstacle: #9a9a92;
+    --grid-line: #d8d8d0;
+    --start: #2e7d32;
+    --goal: #c62828;
+    --path: #3a6ff0;
+    --path-fill: rgba(58, 111, 240, 0.22);
+    --bg: #fafaf7;
+    --panel: #ffffff;
+    --border: #e0e0da;
+    --text: #24241f;
+    --muted: #6b6b63;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 20px;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .subtitle { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+  .layout { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .controls { width: 320px; flex-shrink: 0; }
+  .controls h2, .canvas-wrap h2 { font-size: 14px; margin: 0 0 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  button {
+    background: #2f5fe0;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  button.secondary { background: #e5e5df; color: var(--text); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  input[type="text"], input[type="number"] {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+  }
+  #mapLabel, #startGoalText, #resultText { font-size: 13px; }
+  #resultText.ok { color: var(--start); font-weight: 600; }
+  #resultText.fail { color: var(--goal); font-weight: 600; }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; margin: 10px 0; font-size: 12px; }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .swatch { width: 14px; height: 14px; border-radius: 3px; display: inline-block; border: 1px solid var(--border); }
+  #grid { border: 1px solid var(--border); border-radius: 6px; cursor: crosshair; max-width: 100%; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  #log {
+    background: #1c1c18;
+    color: #d8d8cf;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    padding: 10px;
+    border-radius: 6px;
+    max-height: 220px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+    margin-top: 10px;
+  }
+  hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+  .mode-row { display: flex; flex-direction: column; gap: 6px; }
+  .mode-opt { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: normal; cursor: pointer; }
+  .mode-opt input { margin: 0; }
+</style>
+</head>
+<body>
+
+<h1>A* Debug Visualizer</h1>
+<div class="subtitle">
+  Talks to your real gateway at <code>127.0.0.1:9095</code> through the bridge server — every map
+  publish and <code>/plan_path</code> call here runs your actual <code>src/astar.py</code>, not a
+  reimplementation. Not part of the graded submission.
+</div>
+
+<div class="layout">
+  <div class="panel controls">
+    <h2>Gateway</h2>
+    <div class="field">
+      <span id="gatewayStatus" class="hint">Checking...</span>
+    </div>
+    <button id="restartGateway">Restart gateway</button>
+    <div class="hint">Run after editing <code>astar.py</code> / <code>map_store.py</code> — Python has no hot-reload.</div>
+    <details style="margin-top:8px;">
+      <summary class="hint" style="cursor:pointer;">Gateway log (last 80 lines)</summary>
+      <pre id="gatewayLog" style="max-height:160px; overflow-y:auto; font-size:11px; background:#1c1c18; color:#d8d8cf; padding:8px; border-radius:6px; margin-top:6px;"></pre>
+    </details>
+
+    <hr>
+
+    <h2>Map</h2>
+    <div class="field">
+      <label>Import a custom map (matches the <code>/map</code> JSON format)</label>
+      <input type="file" id="mapFile" accept="application/json">
+    </div>
+    <div class="field">
+      <button id="loadSample" class="secondary">Load maps/student_map.json</button>
+    </div>
+    <div class="field">
+      <button id="newBlankMap" class="secondary">New 16x16 blank map</button>
+    </div>
+    <div id="mapLabel" class="hint">No map loaded.</div>
+
+    <hr>
+
+    <h2>Edit</h2>
+    <div class="field">
+      <label>Click mode</label>
+      <div class="mode-row">
+        <label class="mode-opt"><input type="radio" name="clickMode" value="wall" checked> Toggle wall (click or click-drag)</label>
+        <label class="mode-opt"><input type="radio" name="clickMode" value="start"> Set start (A)</label>
+        <label class="mode-opt"><input type="radio" name="clickMode" value="goal"> Set goal (B)</label>
+      </div>
+    </div>
+    <div id="startGoalText" class="hint">Start: —   Goal: —</div>
+
+    <hr>
+
+    <h2>Plan</h2>
+    <div class="field">
+      <label>Tolerance</label>
+      <input type="number" id="tolerance" value="0.0" step="0.1">
+    </div>
+    <button id="planBtn">Plan Path</button>
+    <button id="clearBtn" class="secondary">Clear Start/Goal</button>
+    <div id="resultText" class="hint" style="margin-top:10px;"></div>
+
+    <hr>
+
+    <h2>Heap services (bonus)</h2>
+    <div class="field">
+      <label>Comma-separated numbers</label>
+      <input type="text" id="heapInput" placeholder="3, 1, 2, -4.5">
+    </div>
+    <button id="heapSortBtn" class="secondary">/heap_sort</button>
+    <button id="heapifyBtn" class="secondary">/heapify</button>
+    <div id="heapResult" class="hint" style="margin-top:8px;"></div>
+
+    <hr>
+
+    <h2>Wire log</h2>
+    <pre id="log"></pre>
+  </div>
+
+  <div class="panel canvas-wrap">
+    <h2>Grid</h2>
+    <div class="legend">
+      <span><span class="swatch" style="background:var(--free)"></span>Free</span>
+      <span><span class="swatch" style="background:var(--obstacle)"></span>Obstacle</span>
+      <span><span class="swatch" style="background:var(--start)"></span>Start (A)</span>
+      <span><span class="swatch" style="background:var(--goal)"></span>Goal (B)</span>
+      <span><span class="swatch" style="background:var(--path)"></span>Path</span>
+    </div>
+    <canvas id="grid" width="400" height="300"></canvas>
+    <div class="hint">Cell (0,0) is bottom-left, matching the world-frame origin convention in map_store.py.</div>
+  </div>
+</div>
+
+<script>
+const CELL_PX = 30;
+let currentMap = null;
+let start = null;
+let goal = null;
+let lastPath = null;
+
+const canvas = document.getElementById('grid');
+const ctx = canvas.getContext('2d');
+
+function occupancy(cx, cy) {
+  const { width } = currentMap.info;
+  return currentMap.data[cy * width + cx];
+}
+
+function isFree(cx, cy) {
+  const { width, height } = currentMap.info;
+  if (cx < 0 || cy < 0 || cx >= width || cy >= height) return false;
+  const v = occupancy(cx, cy);
+  return v >= 0 && v < 50;
+}
+
+function cellToWorld(cx, cy) {
+  const { resolution, origin } = currentMap.info;
+  return {
+    x: origin.position.x + (cx + 0.5) * resolution,
+    y: origin.position.y + (cy + 0.5) * resolution,
+  };
+}
+
+function worldToCell(x, y) {
+  const { resolution, origin } = currentMap.info;
+  return [Math.floor((x - origin.position.x) / resolution), Math.floor((y - origin.position.y) / resolution)];
+}
+
+function validateGridShape(grid) {
+  return !!(grid && grid.info
+    && typeof grid.info.width === 'number'
+    && typeof grid.info.height === 'number'
+    && typeof grid.info.resolution === 'number'
+    && grid.info.origin && grid.info.origin.position
+    && Array.isArray(grid.data)
+    && grid.data.length === grid.info.width * grid.info.height);
+}
+
+function draw() {
+  if (!currentMap) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    return;
+  }
+  const { width, height } = currentMap.info;
+  canvas.width = width * CELL_PX;
+  canvas.height = height * CELL_PX;
+
+  for (let cy = 0; cy < height; cy++) {
+    for (let cx = 0; cx < width; cx++) {
+      const free = isFree(cx, cy);
+      const py = (height - 1 - cy) * CELL_PX;
+      ctx.fillStyle = free ? getVar('--free') : getVar('--obstacle');
+      ctx.fillRect(cx * CELL_PX, py, CELL_PX, CELL_PX);
+      ctx.strokeStyle = getVar('--grid-line');
+      ctx.strokeRect(cx * CELL_PX, py, CELL_PX, CELL_PX);
+    }
+  }
+
+  if (lastPath && lastPath.length) {
+    ctx.fillStyle = getVar('--path-fill');
+    lastPath.forEach(([cx, cy]) => {
+      const py = (height - 1 - cy) * CELL_PX;
+      ctx.fillRect(cx * CELL_PX, py, CELL_PX, CELL_PX);
+    });
+    ctx.strokeStyle = getVar('--path');
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    lastPath.forEach(([cx, cy], i) => {
+      const px = cx * CELL_PX + CELL_PX / 2;
+      const py = (height - 1 - cy) * CELL_PX + CELL_PX / 2;
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+  }
+
+  if (start) drawPin(start, getVar('--start'), 'A');
+  if (goal) drawPin(goal, getVar('--goal'), 'B');
+}
+
+function getVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+function drawPin(cell, color, label) {
+  const { height } = currentMap.info;
+  const px = cell.x * CELL_PX + CELL_PX / 2;
+  const py = (height - 1 - cell.y) * CELL_PX + CELL_PX / 2;
+  ctx.beginPath();
+  ctx.arc(px, py, CELL_PX * 0.35, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.fillStyle = 'white';
+  ctx.font = `bold ${Math.round(CELL_PX * 0.4)}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, px, py);
+}
+
+function cellFromEvent(e) {
+  const rect = canvas.getBoundingClientRect();
+  const cx = Math.floor((e.clientX - rect.left) / CELL_PX);
+  const cyFromTop = Math.floor((e.clientY - rect.top) / CELL_PX);
+  const cy = currentMap.info.height - 1 - cyFromTop;
+  return { x: cx, y: cy };
+}
+
+function currentClickMode() {
+  return document.querySelector('input[name="clickMode"]:checked').value;
+}
+
+function cellInBounds(cell) {
+  return currentMap && cell.x >= 0 && cell.y >= 0 && cell.x < currentMap.info.width && cell.y < currentMap.info.height;
+}
+
+// Wall editing supports click-drag "painting": mousedown decides whether this
+// stroke is placing walls or erasing them (opposite of the cell it started
+// on), then every new cell the pointer crosses during the drag gets that same
+// value. The map is only re-published to the gateway once, on mouseup, so a
+// fast drag across many cells doesn't fire dozens of requests.
+let dragging = false;
+let dragPaintValue = null;
+let dragTouched = new Set();
+
+function setWallAt(cx, cy, value) {
+  currentMap.data[cy * currentMap.info.width + cx] = value;
+}
+
+function applyDragAt(e) {
+  const cell = cellFromEvent(e);
+  if (!cellInBounds(cell)) return;
+  const key = `${cell.x},${cell.y}`;
+  if (dragTouched.has(key)) return;
+  dragTouched.add(key);
+  setWallAt(cell.x, cell.y, dragPaintValue);
+  lastPath = null;
+  draw();
+}
+
+canvas.addEventListener('mousedown', (e) => {
+  if (!currentMap || currentClickMode() !== 'wall') return;
+  const cell = cellFromEvent(e);
+  if (!cellInBounds(cell)) return;
+  e.preventDefault();
+  dragging = true;
+  dragTouched = new Set();
+  dragPaintValue = occupancy(cell.x, cell.y) >= 50 ? 0 : 100;
+  applyDragAt(e);
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  if (dragging) applyDragAt(e);
+});
+
+window.addEventListener('mouseup', () => {
+  if (!dragging) return;
+  dragging = false;
+  publishMap(currentMap);
+});
+
+canvas.addEventListener('click', (e) => {
+  if (!currentMap || currentClickMode() === 'wall') return; // wall edits handled by mousedown/mousemove/mouseup above
+  const cell = cellFromEvent(e);
+  if (!cellInBounds(cell)) return;
+
+  if (currentClickMode() === 'start') start = cell; else goal = cell;
+  lastPath = null;
+  updateStatus();
+  draw();
+});
+
+function updateStatus() {
+  const s = start ? `(${start.x}, ${start.y})${isFree(start.x, start.y) ? '' : ' — BLOCKED/OOB'}` : '—';
+  const g = goal ? `(${goal.x}, ${goal.y})${isFree(goal.x, goal.y) ? '' : ' — BLOCKED/OOB'}` : '—';
+  document.getElementById('startGoalText').textContent = `Start: ${s}   Goal: ${g}`;
+}
+
+function logJSON(label, req, res) {
+  const pre = document.getElementById('log');
+  const entry = `--- ${label} ---\n> ${JSON.stringify(req)}\n< ${JSON.stringify(res)}\n\n`;
+  pre.textContent = entry + pre.textContent;
+}
+
+async function publishMap(grid) {
+  try {
+    const res = await fetch('/api/publish_map', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ map: grid }),
+    });
+    const body = await res.json();
+    logJSON('publish /map', { op: 'publish', topic: '/map', msg: '<grid>' }, body);
+    if (!res.ok) alert(body.error || 'Failed to publish map to gateway.');
+    return res.ok;
+  } catch (err) {
+    logJSON('publish /map', {}, { error: String(err) });
+    return false;
+  }
+}
+
+async function loadMap(grid, label) {
+  if (!validateGridShape(grid)) {
+    alert('This does not look like a valid /map payload — check header/info.width/height/resolution/origin/data.');
+    return;
+  }
+  currentMap = grid;
+  start = null; goal = null; lastPath = null;
+  document.getElementById('mapLabel').textContent =
+    `${label} — ${grid.info.width}x${grid.info.height}, resolution=${grid.info.resolution}, origin=(${grid.info.origin.position.x}, ${grid.info.origin.position.y})`;
+  document.getElementById('resultText').textContent = '';
+  document.getElementById('resultText').className = 'hint';
+  updateStatus();
+  draw();
+  await publishMap(grid);
+}
+
+function newBlankMap(width, height) {
+  const grid = {
+    header: { frame_id: 'map' },
+    info: {
+      resolution: 1.0,
+      width, height,
+      origin: { position: { x: 0.0, y: 0.0, z: 0.0 }, orientation: { x: 0.0, y: 0.0, z: 0.0, w: 1.0 } },
+    },
+    data: new Array(width * height).fill(0),
+  };
+  loadMap(grid, `blank ${width}x${height}`);
+}
+
+document.getElementById('mapFile').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const grid = JSON.parse(await file.text());
+    await loadMap(grid, file.name);
+  } catch (err) {
+    alert('Could not parse that file as JSON: ' + err);
+  }
+});
+
+document.getElementById('loadSample').addEventListener('click', async () => {
+  const res = await fetch('/api/sample_map');
+  if (!res.ok) { alert('Could not read maps/student_map.json'); return; }
+  await loadMap(await res.json(), 'maps/student_map.json');
+});
+
+document.getElementById('newBlankMap').addEventListener('click', () => newBlankMap(16, 16));
+
+document.getElementById('clearBtn').addEventListener('click', () => {
+  start = null; goal = null; lastPath = null;
+  updateStatus();
+  draw();
+});
+
+document.getElementById('planBtn').addEventListener('click', async () => {
+  if (!currentMap || !start || !goal) {
+    alert('Load a map and set both Start and Goal first (switch Click mode to "Set start"/"Set goal" and click a cell).');
+    return;
+  }
+  const tolerance = parseFloat(document.getElementById('tolerance').value) || 0.0;
+  const startWorld = cellToWorld(start.x, start.y);
+  const goalWorld = cellToWorld(goal.x, goal.y);
+  const resultEl = document.getElementById('resultText');
+  resultEl.textContent = 'Planning...';
+  resultEl.className = 'hint';
+
+  try {
+    const res = await fetch('/api/plan_path', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ start: startWorld, goal: goalWorld, tolerance }),
+    });
+    const body = await res.json();
+    if (!res.ok) {
+      resultEl.textContent = body.error || 'Bridge error.';
+      resultEl.className = 'hint fail';
+      logJSON('call_service /plan_path', body.request || {}, body);
+      return;
+    }
+    logJSON('call_service /plan_path', body.request, body.service_response);
+    const sr = body.service_response;
+    if (sr && sr.result) {
+      const poses = sr.values.plan.poses;
+      lastPath = poses.map((p) => worldToCell(p.pose.position.x, p.pose.position.y));
+      resultEl.textContent = `Success — ${poses.length} cells, ${poses.length - 1} moves`;
+      resultEl.className = 'hint ok';
+    } else {
+      lastPath = null;
+      resultEl.textContent = `Failed — ${sr ? sr.status : 'no response from gateway (is make run active?)'}`;
+      resultEl.className = 'hint fail';
+    }
+    draw();
+  } catch (err) {
+    resultEl.textContent = 'Request failed: ' + err;
+    resultEl.className = 'hint fail';
+  }
+});
+
+document.getElementById('heapSortBtn').addEventListener('click', () => callHeap('/heap_sort', '/api/heap_sort', 'numbers'));
+document.getElementById('heapifyBtn').addEventListener('click', () => callHeap('/heapify', '/api/heapify', 'values'));
+
+async function callHeap(service, endpoint, key) {
+  const nums = document.getElementById('heapInput').value
+    .split(',').map((s) => parseFloat(s.trim())).filter((n) => !isNaN(n));
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [key]: nums }),
+    });
+    const body = await res.json();
+    logJSON(`call_service ${service}`, body.request, body.service_response);
+    document.getElementById('heapResult').textContent = res.ok
+      ? JSON.stringify(body.service_response && body.service_response.values)
+      : (body.error || 'Bridge error.');
+  } catch (err) {
+    document.getElementById('heapResult').textContent = 'Request failed: ' + err;
+  }
+}
+
+async function refreshGatewayStatus() {
+  const el = document.getElementById('gatewayStatus');
+  try {
+    const res = await fetch('/api/gateway_status');
+    const body = await res.json();
+    el.textContent = body.listening ? '● listening on 127.0.0.1:9095' : '○ not running';
+    el.style.color = body.listening ? 'var(--start)' : 'var(--goal)';
+  } catch (err) {
+    el.textContent = 'Bridge unreachable: ' + err;
+  }
+}
+
+document.getElementById('restartGateway').addEventListener('click', async () => {
+  const btn = document.getElementById('restartGateway');
+  const el = document.getElementById('gatewayStatus');
+  btn.disabled = true;
+  el.textContent = 'Restarting...';
+  try {
+    const res = await fetch('/api/restart_gateway', { method: 'POST' });
+    const body = await res.json();
+    logJSON('restart gateway', {}, body);
+    document.getElementById('gatewayLog').textContent = body.log || '';
+    if (body.ok) {
+      el.textContent = '● restarted, listening on 127.0.0.1:9095';
+      el.style.color = 'var(--start)';
+      // stale map, since the fresh process starts with no map published yet
+      if (currentMap) await publishMap(currentMap);
+    } else {
+      el.textContent = 'Restart failed — see log below.';
+      el.style.color = 'var(--goal)';
+    }
+  } catch (err) {
+    el.textContent = 'Restart request failed: ' + err;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+document.querySelector('#gatewayLog').closest('details').addEventListener('toggle', async (e) => {
+  if (!e.target.open) return;
+  const res = await fetch('/api/gateway_log');
+  const body = await res.json();
+  document.getElementById('gatewayLog').textContent = body.log || '(empty)';
+});
+
+refreshGatewayStatus();
+setInterval(refreshGatewayStatus, 4000);
+draw();
+</script>
+</body>
+</html>

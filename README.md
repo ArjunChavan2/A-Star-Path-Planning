@@ -26,6 +26,7 @@ make clean   # removes __pycache__
 - `src/plan_path_service.py` — registers `/plan_path`, publishes the accepted path on `/path`.
 - `src/main.py` — wires everything together; `make run`'s entry point.
 - `tools/map_to_rosbridge.py` — provided by the starter kit; the external client `make map` uses.
+- `tools/visualizer/` — **not part of the graded submission.** A local dev tool for debugging `astar.py`/`map_store.py` by hand: a browser UI that imports a custom map, lets you click to set start/goal, and calls the real `/plan_path` over the wire against your actual running gateway (no reimplementation of the algorithm). See "Debugging tools" below.
 - `tests/` — unit tests (`test_map_store.py`, `test_heap.py`, `test_astar.py`) and a raw-socket integration suite (`test_gateway_protocol.py`) against a real running gateway.
 
 ## Design notes / documented assumptions
@@ -39,6 +40,24 @@ make clean   # removes __pycache__
 - **`tolerance`**: accepted in the request but not required to change planning behavior (per spec, "need not alter Project 1 planning"); the current implementation ignores it.
 - **A\* and `/heap_sort`**: per spec, "the planner must call [`/heap_sort`] to order frontier priorities before choosing work to expand." `astar.py` satisfies this by using the exact same `heap.MinHeap` primitives that back the `/heap_sort` service as its open-set, rather than a second, separate priority-queue implementation.
 - Ties in the open-set are broken deterministically via a monotonically increasing tie counter assigned at push time (see `heap.py`/`astar.py` docstrings).
+
+## Debugging tools
+
+`tools/visualizer/` is a standalone, non-graded local dev tool for exercising your own
+`astar.py`/`map_store.py` against the real gateway while you build them, since browsers can't open
+raw TCP sockets and `Autograder.io` is otherwise the only thing calling `/plan_path`:
+
+```
+make run                              # terminal 1
+python3 tools/visualizer/server.py    # terminal 2 -- bridges the browser to 127.0.0.1:9095
+```
+
+Then open <http://127.0.0.1:8800>. Import a custom `/map`-shaped JSON file (or load
+`maps/student_map.json`), left-click a cell for Start, shift-click (or right-click) for Goal, and
+hit Plan Path — it publishes your map and calls `/plan_path` over the real wire protocol, then
+draws the returned path on the grid. A wire log panel shows the raw request/response JSON for both
+calls, and failures surface whatever `status` string your `plan_path_service.py` returned. See
+`spec/MAP_GUIDE.md` and `spec/HEAP_GUIDE.md` for the underlying module documentation.
 
 ## Status
 
