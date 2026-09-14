@@ -46,6 +46,20 @@ class _ServerThread:
         time.sleep(0.2)  # let the server begin listening
 
     def stop(self) -> None:
+        # Close the listening socket (and wait for it to actually close) before
+        # stopping the loop/thread. Without this, the port-9095 listener socket
+        # is never closed (only abandoned mid-loop-stop), so it can still be
+        # bound and listening when another test module's server tries to bind
+        # 127.0.0.1:9095 right after -- an intermittent
+        # "address already in use" failure observed when running the full
+        # suite (`make test` / `python -m unittest discover`) depending on
+        # test module ordering. See also tests/test_map_wire_protocol.py,
+        # which relies on this same fix for its per-test server instances.
+        fut = asyncio.run_coroutine_threadsafe(self.gateway.stop(), self.loop)
+        try:
+            fut.result(timeout=2)
+        except Exception:
+            pass
         self.loop.call_soon_threadsafe(self.loop.stop)
         self._thread.join(timeout=2)
 
