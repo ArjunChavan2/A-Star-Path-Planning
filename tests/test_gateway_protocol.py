@@ -74,6 +74,26 @@ class TestGatewayProtocol(unittest.TestCase):
             with self.assertRaises(TimeoutError):
                 sub_bar.recv_matching(lambda m: m.get("op") == "publish", timeout=0.5)
 
+    def test_publish_without_advertise_is_rejected(self) -> None:
+        with Client() as sub, Client() as pub:
+            sub.subscribe("/foo")
+            time.sleep(0.1)
+            pub.publish("/foo", {"data": "hello"})  # never advertised
+            with self.assertRaises(TimeoutError):
+                sub.recv_matching(lambda m: m.get("op") == "publish", timeout=0.5)
+
+    def test_unadvertise_revokes_publish_rights(self) -> None:
+        with Client() as client_a, Client() as client_b:
+            client_a.advertise("/foo")
+            client_b.subscribe("/foo")
+            client_b.recv_matching(lambda m: m.get("op") == "status", timeout=2)  # subscription confirmed
+
+            client_a.unadvertise("/foo")
+            client_a.publish("/foo", {"data": "should not arrive"})
+
+            with self.assertRaises(TimeoutError):
+                client_b.recv_matching(lambda m: m.get("op") == "publish", timeout=0.5)
+
     def test_heapify_and_heap_sort_service(self) -> None:
         with Client() as client:
             resp = client.call_service("/heap_sort", {"numbers": [3.0, 1.0, 2.0]})

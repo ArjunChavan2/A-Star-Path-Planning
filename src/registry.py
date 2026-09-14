@@ -42,6 +42,16 @@ class Registry:
     def unadvertise(self, conn: Connection, topic: str) -> None:
         self._publishers.get(topic, set()).discard(conn)
 
+    def is_advertised(self, conn: Connection, topic: str) -> bool:
+        """Whether ``conn`` has an active advertisement on ``topic``.
+
+        Only the external wire ``publish`` op is gated by this (see
+        gateway.py) -- internal nodes that call ``publish()`` directly (e.g.
+        plan_path_service.py publishing /path) bypass the wire dispatch layer
+        entirely and are unaffected.
+        """
+        return conn in self._publishers.get(topic, set())
+
     def subscribe(self, conn: Connection, topic: str) -> None:
         self._subscribers.setdefault(topic, set()).add(conn)
 

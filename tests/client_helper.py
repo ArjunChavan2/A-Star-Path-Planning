@@ -65,5 +65,8 @@ class Client:
     def advertise(self, topic: str) -> None:
         self.send({"op": "advertise", "topic": topic, "type": "std_msgs/Any"})
 
+    def unadvertise(self, topic: str) -> None:
+        self.send({"op": "unadvertise", "topic": topic})
+
     def publish(self, topic: str, msg: Any) -> None:
         self.send({"op": "publish", "topic": topic, "msg": msg})

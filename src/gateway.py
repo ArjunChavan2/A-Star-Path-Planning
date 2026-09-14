@@ -125,7 +125,14 @@ class Gateway:
             elif op == "unsubscribe":
                 self.registry.unsubscribe(conn, message["topic"])
             elif op == "publish":
-                self.registry.publish(message["topic"], message.get("msg"))
+                topic = message["topic"]
+                # A connection may publish on a topic only while it currently
+                # holds an advertisement there; unadvertise immediately
+                # revokes it. Silently dropped, matching this project's other
+                # silent-reject cases (e.g. a malformed /map) -- publish has
+                # no acknowledgement in this protocol either way.
+                if self.registry.is_advertised(conn, topic):
+                    self.registry.publish(topic, message.get("msg"))
             elif op == "advertise_service":
                 service = message["service"]
                 self.registry.advertise_service(conn, service)
