@@ -40,12 +40,15 @@ entirely (ignore the parameter, or use it as documented in plan_path_service.py
 if you choose to support it as a stretch goal).
 """
 from __future__ import annotations
-
+from math import inf
 from heap import MinHeap
 from map_store import MapStore
 
 Cell = tuple[int, int]
 
+def manhattan_dist(n1: Cell,
+                   n2: Cell):
+  return abs(n1[0] - n2[0]) + abs(n1[1] - n2[1])
 
 def plan_path(
     map_store: MapStore,
@@ -59,4 +62,48 @@ def plan_path(
     a world-coordinate PoseStamped-like pose (cell centers) is the caller's
     job (see plan_path_service.py) -- this function only deals in grid cells.
     """
-    raise NotImplementedError
+    if not map_store.has_map():
+      return (False, [])
+    queue = MinHeap()
+    start_world = map_store.world_to_cell(*start_world)
+    goal_world = map_store.world_to_cell(*goal_world)
+    if not (map_store.is_free(*goal_world) and map_store.is_free(*start_world)):
+      return (False, [])
+    if start_world == goal_world:
+      return (True, [start_world])
+    queue.push(0, start_world)
+    lib = {start_world: [0, None, False]}
+      
+    
+    while queue.__len__() > 0:
+      priority, curr = queue.pop()
+      if lib.get(curr) == None:
+        lib[curr] = [inf, None, False]
+      if lib[curr][2]:
+        continue
+      lib[curr][2] = True
+      
+      if manhattan_dist(curr, goal_world) == 1:
+        lib[goal_world] = [0, curr, True]
+        i = goal_world
+        path = []
+        while lib[i][1] != None:
+          path.append(i)
+          i = lib[i][1]
+        path.append(i)
+        return (True, path[::-1])
+      
+      def check_next(next):
+        if map_store.is_free(*next):
+          if lib.get(next) == None:
+            lib[next] = [inf, None, False]
+          tent_dist = lib[curr][0] + 1
+          if tent_dist < lib[next][0]:
+            lib[next][0] = tent_dist
+            lib[next][1] = curr
+            queue.push(tent_dist + manhattan_dist(next, goal_world), next)
+      check_next((curr[0] + 1, curr[1]))
+      check_next((curr[0] - 1, curr[1]))
+      check_next((curr[0], curr[1] + 1))
+      check_next((curr[0], curr[1] - 1))        
+    return (False, [])
