@@ -25,6 +25,7 @@ HOST = "127.0.0.1"
 PORT = 9095
 
 SERVICE_CALL_TIMEOUT_S = 5.0
+MAX_LINE_BYTES = 4 * 1024 * 1024  # protocol: "Implementations may reject a line larger than 4 MiB"
 
 
 def log(*args: Any) -> None:
@@ -46,6 +47,12 @@ class Connection:
         except (ConnectionError, RuntimeError):
             pass  # best-effort delivery; a dead peer is cleaned up by its read loop
 
+    def close(self) -> None:
+        try:
+            self._writer.close()
+        except Exception:
+            pass
+
 
 @dataclass
 class _PendingCall:
@@ -61,23 +68,37 @@ class Gateway:
         self.registry = registry
         self._pending: dict[str, _PendingCall] = {}
         self._server: asyncio.base_events.Server | None = None
+        self._connections: set[Connection] = set()
 
     async def start(self) -> None:
-        self._server = await asyncio.start_server(self._handle_client, HOST, PORT)
+        self._server = await asyncio.start_server(self._handle_client, HOST, PORT, limit=MAX_LINE_BYTES)
         log(f"gateway listening on {HOST}:{PORT}")
 
     async def stop(self) -> None:
         if self._server is not None:
             self._server.close()
-            await self._server.wait_closed()
+            # Since Python 3.12.1, wait_closed() also waits for every open
+            # client connection -- close them first so shutdown (e.g. SIGTERM
+            # with a grader still connected) can't hang.
+            for conn in list(self._connections):
+                conn.close()
+            try:
+                await asyncio.wait_for(self._server.wait_closed(), timeout=1.0)
+            except asyncio.TimeoutError:
+                pass
 
     # -- per-connection loop -------------------------------------------------
 
     async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         conn = Connection(writer)
+        self._connections.add(conn)
         try:
             while True:
-                line = await reader.readline()
+                try:
+                    line = await reader.readline()
+                except ValueError:  # line over MAX_LINE_BYTES: reject it, keep the connection
+                    conn.send({"op": "status", "level": "error", "msg": "line too long"})
+                    continue
                 if not line:
                     break
                 line = line.strip()
@@ -95,11 +116,9 @@ class Gateway:
         except (ConnectionError, asyncio.IncompleteReadError):
             pass
         finally:
+            self._connections.discard(conn)
             self._cleanup_connection(conn)
-            try:
-                writer.close()
-            except Exception:
-                pass
+            conn.close()
 
     def _cleanup_connection(self, conn: Connection) -> None:
         self.registry.remove_connection(conn)
