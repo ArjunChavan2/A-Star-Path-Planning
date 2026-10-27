@@ -51,6 +51,10 @@ not fixed (out of the "do not modify production code" boundary for this phase).
   manual `SIGINT` to the `make run` process to confirm clean shutdown.
 - Assumption: `127.0.0.1:9095` is free at the start of each server-backed test/run (true in this
   sandboxed environment; verified no stray listeners before starting).
+  **Wrong on the autograder (2026-10-27):** the grader runs these tests while its own `make run`
+  holds 9095, so test servers now bind a free port (`client_helper.PORT`, `gateway.PORT = PORT`).
+  `make test` also now runs `tests/run_tests.py`, which the grader requires. See
+  `spec/submission_layout.md`, "The grader runs your tests while `make run` is up".
 
 ## Tests performed
 
