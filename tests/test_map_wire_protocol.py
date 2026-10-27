@@ -9,7 +9,7 @@ and we confirm the message travels gateway.py -> registry.py ->
 map_node.py's validator -> map_store.py, exactly as an autograder client
 would.
 
-Each test gets its own fresh server (own MapStore, own port-9095 bind) via
+Each test gets its own fresh server (own MapStore, own test-port bind) via
 setUp/tearDown so map-replacement state from one test can't leak into
 another.
 """
@@ -27,11 +27,14 @@ sys.path.insert(0, os.path.dirname(__file__))
 import heap_service  # noqa: E402
 import map_node  # noqa: E402
 import plan_path_service  # noqa: E402
+import gateway  # noqa: E402
 from gateway import Gateway  # noqa: E402
 from map_store import MapStore  # noqa: E402
 from registry import Registry  # noqa: E402
 
-from client_helper import Client  # noqa: E402
+from client_helper import PORT, Client  # noqa: E402
+
+gateway.PORT = PORT  # serve on the tests' free port, not the live 9095
 
 SPEC_EXAMPLE_GRID = {
     "header": {"frame_id": "map"},
@@ -82,7 +85,7 @@ class _ServerThread:
     def stop(self) -> None:
         # Close the listening socket (and wait for it to actually close)
         # before stopping the loop/thread, so the next test's server can
-        # rebind 127.0.0.1:9095 immediately instead of racing a lingering
+        # rebind the test port immediately instead of racing a lingering
         # socket from this one.
         fut = asyncio.run_coroutine_threadsafe(self.gateway.stop(), self.loop)
         try:

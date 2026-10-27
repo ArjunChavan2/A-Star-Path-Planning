@@ -18,11 +18,14 @@ sys.path.insert(0, os.path.dirname(__file__))
 import heap_service  # noqa: E402
 import map_node  # noqa: E402
 import plan_path_service  # noqa: E402
+import gateway  # noqa: E402
 from gateway import Gateway  # noqa: E402
 from map_store import MapStore  # noqa: E402
 from registry import Registry  # noqa: E402
 
-from client_helper import Client  # noqa: E402
+from client_helper import PORT, Client  # noqa: E402
+
+gateway.PORT = PORT  # serve on the tests' free port, not the live 9095
 
 
 class _ServerThread:
@@ -47,10 +50,10 @@ class _ServerThread:
 
     def stop(self) -> None:
         # Close the listening socket (and wait for it to actually close) before
-        # stopping the loop/thread. Without this, the port-9095 listener socket
+        # stopping the loop/thread. Without this, the test-port listener socket
         # is never closed (only abandoned mid-loop-stop), so it can still be
         # bound and listening when another test module's server tries to bind
-        # 127.0.0.1:9095 right after -- an intermittent
+        # the test port right after -- an intermittent
         # "address already in use" failure observed when running the full
         # suite (`make test` / `python -m unittest discover`) depending on
         # test module ordering. See also tests/test_map_wire_protocol.py,
