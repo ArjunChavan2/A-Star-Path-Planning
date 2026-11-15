@@ -82,7 +82,8 @@ Learned the hard way on Project 1 and Project 2 (2026-10-27): the autograder sta
 
 - In-process gateways: `tests/client_helper.py` picks `PORT` from a free OS port (bind to port 0),
   and each test file that starts a gateway sets `gateway.PORT = PORT` right after its imports.
-- Subprocess runtimes (`make run` / `src/main.py` launched by a test): `src/gateway.py` reads
+- Subprocess runtimes (Projects 2 and 3 only; this repo's tests launch none, so its `src/gateway.py`
+  keeps `PORT = 9095`): `src/gateway.py` reads
   `PORT = int(os.environ.get("GATEWAY_PORT", "9095"))`, and the test passes
   `GATEWAY_PORT=<free port>` in the child's env. With the variable unset the runtime still serves
   9095, as the spec requires.

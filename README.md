@@ -91,7 +91,8 @@ grader rejects as unsafe.
 ```
 tar czf submission.tar.gz \
   --exclude='__pycache__' --exclude='*.pyc' --exclude='.DS_Store' --exclude='gateway.log' \
-  Makefile README.md .gitignore src tests tools maps
+  Makefile README.md .gitignore src tests tools/map_to_rosbridge.py maps \
+  spec/PROJECT1_ASTAR.md spec/ROSBRIDGE_PROTOCOL.md
 tar tzf submission.tar.gz | grep -qx Makefile && echo "Makefile at archive root: OK"
 ```
 
